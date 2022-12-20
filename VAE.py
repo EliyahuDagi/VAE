@@ -5,8 +5,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 class Model(nn.Module):
-    def __init__(self, latent_dim,device):
+    def __init__(self, latent_dim, device):
         """Initialize a VAE.
 
         Args:
@@ -37,29 +38,33 @@ class Model(nn.Module):
             nn.Sigmoid()
         )
 
-
-    def sample(self,sample_size,mu=None,logvar=None):
-        '''
+    def sample(self, sample_size, mu=None, logvar=None):
+        """
         :param sample_size: Number of samples
         :param mu: z mean, None for prior (init with zeros)
         :param logvar: z logstd, None for prior (init with zeros)
         :return:
-        '''
-        if mu==None:
-            mu = torch.zeros((sample_size,self.latent_dim)).to(self.device)
+        """
+        if mu == None:
+            mu = torch.zeros((sample_size, self.latent_dim)).to(self.device)
         if logvar == None:
-            logvar = torch.zeros((sample_size,self.latent_dim)).to(self.device)
-        #TODO
+            logvar = torch.zeros((sample_size, self.latent_dim)).to(self.device)
+        # TODO
 
+    @staticmethod
+    def z_sample(mu, log_var):
+        eps = torch.randn_like(mu)
+        return mu + torch.exp(log_var * 0.5) * eps
 
-    def z_sample(self, mu, logvar):
-        #TODO
-        pass
+    def loss(self, x, recon, mu, logvar):
 
-    def loss(self,x,recon,mu,logvar):
-        #TODO
         pass
 
     def forward(self, x):
-        #TODO
-        pass
+        encoded = self.encoder(x)
+        mu = self.mu(encoded)
+        logvar = self.logvar(encoded)
+        z = self.z_sample(mu=mu, logvar=logvar)
+        reconstruction = self.decoder(z)
+        return x, mu, logvar, reconstruction
+
