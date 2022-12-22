@@ -5,19 +5,33 @@ import argparse
 import torch
 import torchvision
 from torchvision import transforms
-from VAE import Model
+from VAE import Model, Averager
+import os
 
 
 def train(vae, trainloader, optimizer, epoch):
     vae.train()  # set to training mode
-    # TODO
+    avg = Averager()
+    for batch in trainloader:
+        vae.zero_grad()
+        z_mu, z_log_var, reconstruct = vae(batch)
+        loss = vae.loss(x=batch, recon=reconstruct, mu=z_mu, logvar=z_log_var)
+        loss.backward()
+        optimizer.step()
+        avg.add(-loss)
+    return avg.val().item()
 
 
 def test(vae, testloader, filename, epoch):
     vae.eval()  # set to inference mode
     with torch.no_grad():
-        pass
-        # TODO
+        avg = Averager()
+        for batch in testloader:
+            z_mu, z_log_var, reconstruct = vae(batch)
+            loss = vae.loss(x=batch, recon=reconstruct, mu=z_mu, logvar=z_log_var)
+            avg.add(-loss)
+    torch.save(vae.state_dict(), os.path.join('models', filename + str(epoch) + '.pt'))
+    return avg.val().item()
 
 
 def main(args):
@@ -26,7 +40,6 @@ def main(args):
         transforms.ToTensor(),
         transforms.Lambda(lambda x: x + torch.zeros_like(x).uniform_(0., 1. / 256.)),  # dequantization
         transforms.Normalize((0.,), (257. / 256.,)),  # rescales to [0,1]
-
     ])
 
     if args.dataset == 'mnist':
@@ -42,7 +55,7 @@ def main(args):
         trainset = torchvision.datasets.FashionMNIST(root='~/torch/data/FashionMNIST',
                                                      train=True, download=True, transform=transform)
         trainloader = torch.utils.data.DataLoader(trainset,
-                                                  batch_size=batch_size, shuffle=True, num_workers=2)
+                                                  batch_size=args.batch_size, shuffle=True, num_workers=2)
         testset = torchvision.datasets.FashionMNIST(root='./data/FashionMNIST',
                                                     train=False, download=True, transform=transform)
         testloader = torch.utils.data.DataLoader(testset,
@@ -55,8 +68,7 @@ def main(args):
                + 'mid%d_' % args.latent_dim
 
     vae = Model(latent_dim=args.latent_dim, device=device).to(device)
-    optimizer = torch.optim.Adam(
-        vae.parameters(), lr=args.lr)
+    optimizer = torch.optim.Adam(vae.parameters(), lr=args.lr)
 
     for epoch in range(args.epochs):
         train(vae=vae, trainloader=trainloader, optimizer=optimizer, epoch=epoch)
@@ -92,4 +104,5 @@ if __name__ == '__main__':
                         default=1e-3)
 
     args = parser.parse_args()
+    os.makedirs('models', exist_ok=True)
     main(args)

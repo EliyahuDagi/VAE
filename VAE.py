@@ -45,11 +45,11 @@ class Model(nn.Module):
         :param logvar: z logstd, None for prior (init with zeros)
         :return:
         """
-        if mu == None:
+        if mu is None:
             mu = torch.zeros((sample_size, self.latent_dim)).to(self.device)
-        if logvar == None:
+        if logvar is None:
             logvar = torch.zeros((sample_size, self.latent_dim)).to(self.device)
-        # TODO
+        return self.decoder(self.z_sample(mu=mu, log_var=logvar))
 
     @staticmethod
     def z_sample(mu, log_var):
@@ -57,14 +57,38 @@ class Model(nn.Module):
         return mu + torch.exp(log_var * 0.5) * eps
 
     def loss(self, x, recon, mu, logvar):
-
-        pass
+        reconstruct_term = nn.BCELoss(recon, x)
+        kl_term = -0.5 * (1 + logvar - (mu * mu) - torch.exp(logvar))
+        return reconstruct_term + kl_term
 
     def forward(self, x):
         encoded = self.encoder(x)
         mu = self.mu(encoded)
-        logvar = self.logvar(encoded)
-        z = self.z_sample(mu=mu, logvar=logvar)
+        log_var = self.logvar(encoded)
+        z = self.z_sample(mu=mu, logvar=log_var)
         reconstruction = self.decoder(z)
-        return x, mu, logvar, reconstruction
+        return mu, log_var, reconstruction
 
+
+class Averager(object):
+    """Compute average for torch.Tensor, used for loss average."""
+
+    def __init__(self):
+        self.n_count = 0
+        self.sum = 0
+
+    def add(self, v):
+        count = v.data.numel()
+        v = v.data.sum()
+        self.n_count += count
+        self.sum += v
+
+    def reset(self):
+        self.n_count = 0
+        self.sum = 0
+
+    def val(self):
+        res = 0
+        if self.n_count != 0:
+            res = self.sum / float(self.n_count)
+        return res
