@@ -37,6 +37,7 @@ class Model(nn.Module):
             nn.ConvTranspose2d(32, 1, 4, 1, 2),  # B, 1, 28, 28
             nn.Sigmoid()
         )
+        self.bce = nn.BCELoss(reduction='none')
 
     def sample(self, sample_size, mu=None, logvar=None):
         """
@@ -49,7 +50,8 @@ class Model(nn.Module):
             mu = torch.zeros((sample_size, self.latent_dim)).to(self.device)
         if logvar is None:
             logvar = torch.zeros((sample_size, self.latent_dim)).to(self.device)
-        return self.decoder(self.z_sample(mu=mu, log_var=logvar))
+        x = self.upsample(self.z_sample(mu=mu, log_var=logvar)).reshape(-1, 64, 7, 7)
+        return self.decoder(x)
 
     @staticmethod
     def z_sample(mu, log_var):
@@ -57,15 +59,16 @@ class Model(nn.Module):
         return mu + torch.exp(log_var * 0.5) * eps
 
     def loss(self, x, recon, mu, logvar):
-        reconstruct_term = nn.BCELoss(recon, x)
-        kl_term = -0.5 * (1 + logvar - (mu * mu) - torch.exp(logvar))
-        return reconstruct_term + kl_term
+        reconstruct_term = torch.mean(self.bce(recon, x), dim=[1, 2, 3])
+        kl_term = torch.mean(-0.5 * (1 + logvar - (mu * mu) - torch.exp(logvar)), dim=1)
+        return torch.mean(reconstruct_term + kl_term)
 
     def forward(self, x):
-        encoded = self.encoder(x)
+        encoded = nn.Flatten()(self.encoder(x))
         mu = self.mu(encoded)
         log_var = self.logvar(encoded)
-        z = self.z_sample(mu=mu, logvar=log_var)
+        z = self.z_sample(mu=mu, log_var=log_var)
+        z = self.upsample(z).reshape(-1, 64, 7, 7)
         reconstruction = self.decoder(z)
         return mu, log_var, reconstruction
 
